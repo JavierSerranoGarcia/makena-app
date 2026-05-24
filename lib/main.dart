@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
 const _kBg = Color(0xFF1F1C1A);
 const _kAccent = Color(0xFFD4A396);
@@ -494,6 +495,63 @@ class _MeasurementField extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────── Pose measurement helpers ────
+
+class _BodyMeasurements {
+  final double shoulder, bust, waist, hip;
+  const _BodyMeasurements({required this.shoulder, required this.bust, required this.waist, required this.hip});
+}
+
+// Derives body circumferences (cm) from ML Kit pose landmarks.
+//
+// Shoulder and hip widths come from their respective landmarks. Waist is
+// estimated at 73 % of hip width (average female proportion) and bust at
+// 92 % of shoulder width, because ML Kit has no waist or bust landmark.
+// Pixel widths are scaled to cm using the shoulder→ankle pixel distance as a
+// height proxy (assumed 140 cm for an average 165 cm adult standing upright),
+// then converted to circumferences with the ellipse approximation
+// C ≈ 2.59 × width (body depth ≈ 62.5 % of frontal width).
+_BodyMeasurements? _extractMeasurements(Pose pose) {
+  final ls = pose.landmarks[PoseLandmarkType.leftShoulder];
+  final rs = pose.landmarks[PoseLandmarkType.rightShoulder];
+  final lh = pose.landmarks[PoseLandmarkType.leftHip];
+  final rh = pose.landmarks[PoseLandmarkType.rightHip];
+  final la = pose.landmarks[PoseLandmarkType.leftAnkle];
+  final ra = pose.landmarks[PoseLandmarkType.rightAnkle];
+
+  if (ls == null || rs == null || lh == null || rh == null || la == null || ra == null) {
+    return null;
+  }
+  if (ls.likelihood < 0.5 || rs.likelihood < 0.5 ||
+      lh.likelihood < 0.5 || rh.likelihood < 0.5) {
+    return null;
+  }
+
+  final shoulderWidthPx = (rs.x - ls.x).abs();
+  final hipWidthPx = (rh.x - lh.x).abs();
+
+  final shoulderMidY = (ls.y + rs.y) / 2;
+  final ankleMidY = (la.y + ra.y) / 2;
+  final heightPx = ankleMidY - shoulderMidY;
+  if (heightPx <= 0 || shoulderWidthPx <= 0 || hipWidthPx <= 0) return null;
+
+  const shoulderToAnkleCm = 140.0;
+  final pxPerCm = heightPx / shoulderToAnkleCm;
+
+  final shoulderWidthCm = shoulderWidthPx / pxPerCm;
+  final hipWidthCm = hipWidthPx / pxPerCm;
+  final bustWidthCm = shoulderWidthCm * 0.92;
+  final waistWidthCm = hipWidthCm * 0.73;
+
+  const widthToCircumference = 2.59;
+  return _BodyMeasurements(
+    shoulder: shoulderWidthCm * widthToCircumference,
+    bust: bustWidthCm * widthToCircumference,
+    waist: waistWidthCm * widthToCircumference,
+    hip: hipWidthCm * widthToCircumference,
+  );
+}
+
 // ──────────────────────────────────────────────── CameraSimulationView ────────
 
 class CameraSimulationView extends StatefulWidget {
@@ -557,18 +615,41 @@ class _CameraSimulationViewState extends State<CameraSimulationView> {
 
     setState(() => _isAnalyzing = true);
 
+    final poseDetector = PoseDetector(
+      options: PoseDetectorOptions(model: PoseDetectionModel.accurate),
+    );
+
     try {
-      XFile imageFile = await _cameraController!.takePicture();
-      debugPrint("Captured image path: ${imageFile.path}");
+      final imageFile = await _cameraController!.takePicture();
+      final inputImage = InputImage.fromFilePath(imageFile.path);
+      final poses = await poseDetector.processImage(inputImage);
 
-      // TODO: replace with real measurement extraction
-      await Future.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
 
-      widget.onScanComplete(96.5, 92.0, 66.4, 98.2);
+      if (poses.isEmpty) {
+        setState(() => _isAnalyzing = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No body detected. Stand back so your full body is visible.'),
+        ));
+        return;
+      }
+
+      final measurements = _extractMeasurements(poses.first);
+      if (measurements == null) {
+        setState(() => _isAnalyzing = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not read full pose. Ensure good lighting and full body is in frame.'),
+        ));
+        return;
+      }
+
+      widget.onScanComplete(measurements.shoulder, measurements.bust, measurements.waist, measurements.hip);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       debugPrint("Capture error: $e");
-      setState(() => _isAnalyzing = false);
+      if (mounted) setState(() => _isAnalyzing = false);
+    } finally {
+      await poseDetector.close();
     }
   }
 
@@ -650,7 +731,7 @@ class _CameraSimulationViewState extends State<CameraSimulationView> {
                         icon: const Icon(Icons.close, color: Colors.white, size: 28),
                         onPressed: () => Navigator.pop(context),
                       ),
-                      const Text('LIVE LENS ACTIVE', style: TextStyle(color: Colors.green, letterSpacing: 1.5, fontSize: 11, fontWeight: FontWeight.bold)),
+                      const Text('STAND 2–3 M BACK · FULL BODY VISIBLE', style: TextStyle(color: Colors.white70, letterSpacing: 1.2, fontSize: 10)),
                       const Icon(Icons.mic, color: Colors.green, size: 20),
                     ],
                   ),
@@ -663,7 +744,7 @@ class _CameraSimulationViewState extends State<CameraSimulationView> {
                     child: const Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('Extracting Geometric Contour Markers...', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+                        Text('Detecting pose & calculating measurements...', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
                         SizedBox(height: 12),
                         LinearProgressIndicator(color: _kAccent, backgroundColor: Colors.white12),
                       ],
