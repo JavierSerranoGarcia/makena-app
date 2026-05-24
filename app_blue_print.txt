@@ -1,0 +1,8 @@
+> **HI HONEY, HERE IS THE APP ARCHITECTURE BLUEPRINT:**
+> 
+> * **Framework:** Flutter (iOS & Android)
+> * **State Management:** Clean `StatefulWidget` flows with `AnimatedSwitcher` transitions.
+> * **Screen 1 (`OnboardingScreen`):** A custom PageView introducing the core value propositions.
+> * **Screen 2 (`MeasurementInputScreen`):** Handles manual profile entries, skin undertone selection, and links out to saved profiles using an `ActionChip` wrapper state matrix.
+> * **Screen 3 (`CameraSimulationView`):** This is where you come in! I upgraded it from a simulation to use native `camera` and `permission_handler` hooks. It initializes the back lens device cameras, checks system privacy manifests, and renders a `CameraPreview` layered under a custom `CustomPainter` overlay map (`SilhouetteOverlayPainter`).
+> * **Screen 4 (`ResultsScreen`):** Translates the calculated shoulder/bust/waist/hip ratios into body shape categories (Pear, Hourglass, Rectangle) and serves dynamic style rule match sets and color palettes based on skin chemistry inputs.
