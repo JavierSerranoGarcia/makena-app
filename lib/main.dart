@@ -616,7 +616,7 @@ class _CameraSimulationViewState extends State<CameraSimulationView> {
     setState(() => _isAnalyzing = true);
 
     final poseDetector = PoseDetector(
-      options: PoseDetectorOptions(model: PoseDetectionModel.accurate),
+      options: PoseDetectorOptions(model: PoseDetectionModel.base),
     );
 
     try {
