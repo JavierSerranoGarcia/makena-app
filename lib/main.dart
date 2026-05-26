@@ -2,21 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'screens/splash_screen.dart';
+import 'screens/auth/login_screen.dart';
+import 'services/storage_service.dart';
 
 const _kBg = Color(0xFF1F1C1A);
 const _kAccent = Color(0xFFD4A396);
 
-void main() => runApp(const MakenaApp());
+void main() => runApp(const FormaApp());
 
 // ─────────────────────────────────────────────────────────────── App ──────────
 
-class MakenaApp extends StatelessWidget {
-  const MakenaApp({super.key});
+class FormaApp extends StatelessWidget {
+  const FormaApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Makena',
+      title: 'Forma',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: _kBg,
@@ -43,7 +46,7 @@ class MakenaApp extends StatelessWidget {
           labelStyle: const TextStyle(color: Colors.white54),
         ),
       ),
-      home: const OnboardingScreen(),
+      home: const SplashScreen(),
     );
   }
 }
@@ -810,6 +813,34 @@ class ResultsScreen extends StatelessWidget {
         elevation: 0,
         title: const Text('Your Style Profile', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
         centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              final email = await StorageService.getCurrentUserEmail();
+              if (email != null) {
+                final profile = await StorageService.getUserProfile(email);
+                if (profile != null) {
+                  final updatedProfile = profile.copyWith(
+                    shoulder: shoulder,
+                    bust: bust,
+                    waist: waist,
+                    hip: hip,
+                    undertone: undertone,
+                  );
+                  await StorageService.saveUserProfile(updatedProfile);
+                }
+              }
+              await StorageService.logout();
+              if (context.mounted) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
+                );
+              }
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(24, 8, 24, 48),
