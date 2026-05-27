@@ -1,4 +1,6 @@
-```
-# No build artifacts, dependencies, or temp files detected in changes
-# Only documentation files (AGENTS.md, AGENT.md, README.md) were modified
-```
+# Project-specific ignores
+IMPROVEMENT_PLAN.md
+
+Wait, that doesn't make sense - we shouldn't ignore the only file that was added. Since the change list contains only a markdown file (source/config) and no build artifacts, dependencies, or temp files, the output should be empty.
+
+(empty)
